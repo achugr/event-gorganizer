@@ -1,0 +1,17 @@
+{{define "event"}}
+    <b>{{- .Title -}}</b>
+    {{"\n"}}
+    {{- printf "Participants: %d\n" (len .Participants) -}}
+    {{"\n"}}
+    {{- if .Participants -}}
+        {{- range $participant := .Participants -}}
+            {{- if $participant.InvitedBy -}}
+                {{- printf "#%d: %s (invited by @%s)\n" $participant.Number $participant.Name $participant.InvitedBy.Name -}}
+            {{- else -}}
+                {{- printf "#%d: %s\n" $participant.Number $participant.Name -}}
+            {{- end -}}
+        {{- end -}}
+    {{- else -}}
+        {{- "No participants" -}}
+    {{- end -}}
+{{ end -}}

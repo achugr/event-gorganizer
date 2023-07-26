@@ -1,0 +1,1 @@
+https://api.telegram.org/bot{my_bot_token}/setWebhook?url={service_url}/{webhook_secret}
