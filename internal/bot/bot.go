@@ -33,7 +33,7 @@ func NewPollBot(eventService *service.EventService, tgKey string) *TgBot {
 	}
 	_, err = bot.Request(tgbotapi.DeleteWebhookConfig{DropPendingUpdates: false})
 	if err != nil {
-		log.Error().Msgf("Deleted a webhook config for the bot.")
+		log.Error().Msgf("Failed to delete a webhook config for the bot.")
 	}
 	bot.Debug = viper.GetBool("BOT_DEBUG")
 	updateConfig := tgbotapi.NewUpdate(0)
@@ -46,29 +46,32 @@ func NewPollBot(eventService *service.EventService, tgKey string) *TgBot {
 	}
 }
 
-func NewWebhookBot(eventService *service.EventService, webhookSecret string, tgKey string) *TgBot {
+func NewWebhookBot(eventService *service.EventService, webhookSecret string, tgKey string) (*TgBot, error) {
 	log.Info().Msg("Starting the bot in webhook mode.")
 	bot, err := tgbotapi.NewBotAPI(tgKey)
 	if err != nil {
-		log.Fatal().Msg(err.Error())
+		log.Error().Msgf("Failed to initialize the bot: %s", err.Error())
+		return nil, err
 	}
 
 	bot.Debug = true
 
 	info, err := bot.GetWebhookInfo()
 	if err != nil {
-		log.Fatal().Msg(err.Error())
+		log.Error().Msg(err.Error())
+		return nil, err
 	}
 
 	if info.LastErrorDate != 0 {
 		log.Error().Msgf("Telegram callback failed: %s.", info.LastErrorMessage)
+		return nil, err
 	}
 
 	updates := bot.ListenForWebhook("/" + webhookSecret)
 	go func() {
 		err := http.ListenAndServe(":8080", nil)
 		if err != nil {
-			log.Fatal().Msgf("Failed starting the server: %s.", err)
+			log.Error().Msgf("Failed to start the server: %s.", err)
 			os.Exit(3)
 		}
 	}()
@@ -77,7 +80,7 @@ func NewWebhookBot(eventService *service.EventService, webhookSecret string, tgK
 		updates:                updates,
 		eventService:           eventService,
 		eventRenderingTemplate: getTemplate(),
-	}
+	}, nil
 }
 
 func (b *TgBot) ProcessUpdates() {
