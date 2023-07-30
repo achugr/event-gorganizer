@@ -33,3 +33,5 @@ gcloud run deploy `NAME` --source . --project `PROJECT` --region `REGION` --set-
 ET=TG_WEBHOOK_SECRET:latest --allow-unauthenticated
 
 ```
+
+Exit code `3` indicates initialization error, check the logs for details. 

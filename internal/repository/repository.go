@@ -26,7 +26,7 @@ func NewEventRepository(ctx context.Context, settings GcpSettings) (*EventReposi
 	}
 	dsClient, err := datastore.NewClient(ctx, settings.ProjectName, opts...)
 	if err != nil {
-		log.Fatal().Msgf("Datastore client initialization failed: %s.", err)
+		log.Error().Msgf("Failed to initialize Datastore client: %s.", err)
 		return nil, err
 	}
 

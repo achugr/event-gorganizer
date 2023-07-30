@@ -22,7 +22,7 @@ func main() {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			log.Info().Msg("Config file not found, using env variables.")
 		} else {
-			log.Fatal().Msg("Error on reading the config.")
+			log.Error().Msg("Error on reading the config.")
 			os.Exit(3)
 		}
 	}
@@ -30,14 +30,14 @@ func main() {
 	gcpSettings := getGcpSettings()
 	eventRepo, err := repository.NewEventRepository(context.Background(), gcpSettings)
 	if err != nil {
-		log.Fatal().Msgf("Failed to initialize the repository: %s.", err)
+		log.Error().Msgf("Failed to initialize the repository: %s.", err)
 		os.Exit(3)
 	}
 	eventService := service.NewService(eventRepo)
 
 	bot, err := createBot(eventService)
 	if err != nil {
-		log.Fatal().Msgf("Failed to initialize the bot: %s.", err)
+		log.Error().Msgf("Failed to initialize the bot: %s.", err)
 		os.Exit(3)
 	}
 	bot.ProcessUpdates()

@@ -29,11 +29,13 @@ func NewPollBot(eventService *service.EventService, tgKey string) (*TgBot, error
 	log.Info().Msg("Starting the bot in poll mode.")
 	bot, err := tgbotapi.NewBotAPI(tgKey)
 	if err != nil {
-		log.Fatal().Msgf("Failed registering the bot: %s.", err)
+		log.Error().Msgf("Failed registering the bot: %s.", err)
+		return nil, err
 	}
 	_, err = bot.Request(tgbotapi.DeleteWebhookConfig{DropPendingUpdates: false})
 	if err != nil {
 		log.Error().Msgf("Failed to delete a webhook config for the bot.")
+		return nil, err
 	}
 	bot.Debug = viper.GetBool("BOT_DEBUG")
 	updateConfig := tgbotapi.NewUpdate(0)
@@ -188,7 +190,7 @@ func (b *TgBot) ProcessUpdates() {
 		}
 
 		if _, err := b.bot.Send(msg); err != nil {
-			log.Fatal().Msg(err.Error())
+			log.Error().Msgf("Failed to send the message: %s", err)
 		}
 	}
 }
