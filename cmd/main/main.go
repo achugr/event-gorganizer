@@ -28,10 +28,18 @@ func main() {
 	}
 	log.Info().Msg("Starting the bot.")
 	gcpSettings := getGcpSettings()
-	eventRepo := repository.NewEventRepository(context.Background(), gcpSettings)
+	eventRepo, err := repository.NewEventRepository(context.Background(), gcpSettings)
+	if err != nil {
+		log.Fatal().Msgf("Failed to initialize the repository: %s.", err)
+		os.Exit(3)
+	}
 	eventService := service.NewService(eventRepo)
 
-	bot := createBot(eventService)
+	bot, err := createBot(eventService)
+	if err != nil {
+		log.Fatal().Msgf("Failed to initialize the bot: %s.", err)
+		os.Exit(3)
+	}
 	bot.ProcessUpdates()
 }
 
@@ -49,7 +57,7 @@ func getGcpSettings() repository.GcpSettings {
 	}
 }
 
-func createBot(eventService *service.EventService) *tgbot.TgBot {
+func createBot(eventService *service.EventService) (*tgbot.TgBot, error) {
 	tgKey := viper.GetString("TG_KEY")
 	if viper.GetString("ENV") == "LOCAL" {
 		return tgbot.NewPollBot(eventService, tgKey)

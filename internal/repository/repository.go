@@ -19,7 +19,7 @@ type GcpSettings struct {
 	CredentialsFilePath *string
 }
 
-func NewEventRepository(ctx context.Context, settings GcpSettings) *EventRepository {
+func NewEventRepository(ctx context.Context, settings GcpSettings) (*EventRepository, error) {
 	opts := make([]option.ClientOption, 0)
 	if settings.CredentialsFilePath != nil {
 		opts = append(opts, option.WithCredentialsFile(*settings.CredentialsFilePath))
@@ -27,24 +27,25 @@ func NewEventRepository(ctx context.Context, settings GcpSettings) *EventReposit
 	dsClient, err := datastore.NewClient(ctx, settings.ProjectName, opts...)
 	if err != nil {
 		log.Fatal().Msgf("Datastore client initialization failed: %s.", err)
+		return nil, err
 	}
 
 	return &EventRepository{
 		dsClient: dsClient,
-	}
+	}, nil
 }
 
-func (r EventRepository) Save(ctx context.Context, event *model.Event) *model.Event {
+func (r *EventRepository) Save(ctx context.Context, event *model.Event) (*model.Event, error) {
 	key := datastore.NameKey("Event", event.Id(), nil)
 	_, err := r.dsClient.Put(ctx, key, event)
 	if err != nil {
-		log.Error().Msgf("Failed saving the event %s: %s", event.Id(), err)
-		return nil
+		log.Error().Msgf("Failed to save the event %s: %s", event.Id(), err)
+		return nil, err
 	}
-	return event
+	return event, nil
 }
 
-func (r EventRepository) GetActiveEvent(ctx context.Context, chatId int64) *model.Event {
+func (r *EventRepository) GetActiveEvent(ctx context.Context, chatId int64) (*model.Event, error) {
 	query := datastore.NewQuery("Event").
 		FilterField("ChatId", "=", chatId).
 		FilterField("Active", "=", true).
@@ -54,10 +55,10 @@ func (r EventRepository) GetActiveEvent(ctx context.Context, chatId int64) *mode
 	var event model.Event
 	_, err := iter.Next(&event)
 	if err != nil && err != iterator.Done {
-		log.Error().Msgf("Failed getting event for the chat %s.", chatId)
-		return nil
+		log.Error().Msgf("Failed to get an event for the chat %s: %s.", chatId, err)
+		return nil, err
 	}
-	return &event
+	return &event, nil
 }
 
 func ExecTx[R any](ctx context.Context, repo *EventRepository, readonly bool, f func() (*R, error)) (*R, error) {
@@ -75,11 +76,6 @@ func ExecTx[R any](ctx context.Context, repo *EventRepository, readonly bool, f 
 			}
 		}
 		r = result
-		_, ce := tx.Commit()
-		if ce != nil {
-			log.Error().Err(e)
-			return ce
-		}
 		return nil
 	}, opts...)
 	return r, err

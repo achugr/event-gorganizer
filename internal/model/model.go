@@ -43,7 +43,7 @@ func (e *Event) FindParticipant(id string) *Participant {
 	return nil
 }
 
-func (e *Event) AddParticipant(participant *Participant) *Participant {
+func (e *Event) AddParticipant(participant *Participant) bool {
 	existing := e.FindParticipant(participant.Id())
 	if existing == nil {
 		if len(e.Participants) > 0 {
@@ -52,9 +52,9 @@ func (e *Event) AddParticipant(participant *Participant) *Participant {
 			participant.Number = 1
 		}
 		e.Participants = append(e.Participants, participant)
-		return participant
+		return true
 	}
-	return nil
+	return false
 }
 
 func (e *Event) RemoveParticipant(id string) *Participant {

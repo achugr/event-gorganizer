@@ -11,7 +11,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
-	"html/template"
+	templating "html/template"
 	"net/http"
 	"os"
 	"strconv"
@@ -22,10 +22,10 @@ type TgBot struct {
 	bot                    *tgbotapi.BotAPI
 	updates                tgbotapi.UpdatesChannel
 	eventService           *service.EventService
-	eventRenderingTemplate template.Template
+	eventRenderingTemplate *templating.Template
 }
 
-func NewPollBot(eventService *service.EventService, tgKey string) *TgBot {
+func NewPollBot(eventService *service.EventService, tgKey string) (*TgBot, error) {
 	log.Info().Msg("Starting the bot in poll mode.")
 	bot, err := tgbotapi.NewBotAPI(tgKey)
 	if err != nil {
@@ -38,12 +38,16 @@ func NewPollBot(eventService *service.EventService, tgKey string) *TgBot {
 	bot.Debug = viper.GetBool("BOT_DEBUG")
 	updateConfig := tgbotapi.NewUpdate(0)
 	updateConfig.Timeout = 30
+	template, err := getTemplate()
+	if err != nil {
+		return nil, err
+	}
 	return &TgBot{
 		bot:                    bot,
 		updates:                bot.GetUpdatesChan(updateConfig),
 		eventService:           eventService,
-		eventRenderingTemplate: getTemplate(),
-	}
+		eventRenderingTemplate: template,
+	}, nil
 }
 
 func NewWebhookBot(eventService *service.EventService, webhookSecret string, tgKey string) (*TgBot, error) {
@@ -75,11 +79,15 @@ func NewWebhookBot(eventService *service.EventService, webhookSecret string, tgK
 			os.Exit(3)
 		}
 	}()
+	template, err := getTemplate()
+	if err != nil {
+		return nil, err
+	}
 	return &TgBot{
 		bot:                    bot,
 		updates:                updates,
 		eventService:           eventService,
-		eventRenderingTemplate: getTemplate(),
+		eventRenderingTemplate: template,
 	}, nil
 }
 
@@ -97,48 +105,83 @@ func (b *TgBot) ProcessUpdates() {
 
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "")
 
+		arguments := update.Message.CommandArguments()
 		switch update.Message.Command() {
 		case "new":
 			chatId := update.FromChat().ID
-			if b.hasPermissionToCreateEvent(update.SentFrom().ID, update.FromChat().ID) {
+			hasPermission, err := b.hasPermissionToCreateEvent(update.SentFrom().ID, update.FromChat().ID)
+			if err != nil {
+				log.Error().Msgf("Failed to check permissions for the chat %s: %s.", chatId, err)
+				msg.Text = "Failed to check permissions."
+			} else if hasPermission {
 				creator := getSelf(update)
-				b.eventService.CreateNewEvent(ctx, chatId, creator, update.Message.CommandArguments())
-				msg.Text = "Event was created."
+				_, err := b.eventService.CreateNewEvent(ctx, chatId, creator, arguments)
+				if err != nil {
+					log.Error().Msgf("Failed to create an event for the chat %s: %s.", chatId, err)
+					msg.Text = "Failed to create an event."
+				} else {
+					msg.Text = "Event created."
+				}
 			} else {
 				msg.Text = "Event wasn't created, not enough rights."
 			}
 		case "event":
-			event := b.eventService.GetActiveEvent(ctx, update.FromChat().ID)
-			msg.ParseMode = tgbotapi.ModeHTML
-			msg.Text = b.renderEvent(*event)
+			event, err := b.eventService.GetActiveEvent(ctx, update.FromChat().ID)
+			if err != nil {
+				log.Error().Msgf("Failed to get an active event for the chat %s: %s.", update.FromChat().ID, err)
+				msg.Text = "Failed to get an active event."
+			} else {
+				msg.ParseMode = tgbotapi.ModeHTML
+				msg.Text = b.renderEvent(*event)
+			}
 		case "i":
 			self := getSelf(update)
 			if hasArguments(update.Message) {
-				invitedPerson := update.Message.CommandArguments()
+				invitedPerson := arguments
 				invitedParticipant := &model.Participant{
 					Name:       invitedPerson,
 					TelegramId: nil,
 					InvitedBy:  self,
 				}
-				b.eventService.AddNewParticipant(ctx, update.FromChat().ID, invitedParticipant)
-				msg.Text = fmt.Sprintf("Person %s was added by %s.", invitedPerson, self.Name)
+				invitedParticipant, err := b.eventService.AddNewParticipant(ctx, update.FromChat().ID, invitedParticipant)
+				if err != nil {
+					log.Error().Msgf("Failed to add %s: %s.", invitedPerson, err)
+					msg.Text = fmt.Sprintf("Failed to add %s.", invitedPerson)
+				} else {
+					msg.Text = fmt.Sprintf("%s added by %s.", invitedPerson, self.Name)
+				}
 			} else {
-				b.eventService.AddNewParticipant(ctx, update.FromChat().ID, self)
-				msg.Text = fmt.Sprintf("Person %s has been added", self.Name)
+				_, err := b.eventService.AddNewParticipant(ctx, update.FromChat().ID, self)
+				if err != nil {
+					log.Error().Msgf("Failed to add %s: %s.", self.Name, err)
+					msg.Text = fmt.Sprintf("Failed to add %s.", self.Name)
+				} else {
+					msg.Text = fmt.Sprintf("%s added.", self.Name)
+				}
 			}
 		case "cant":
 			self := getSelf(update)
 			if hasArguments(update.Message) {
-				participantNumber, err := strconv.Atoi(update.Message.CommandArguments())
+				participantNumber, err := strconv.Atoi(arguments)
 				if err != nil {
-					msg.Text = "Incorrect participant number."
+					msg.Text = fmt.Sprintf("Incorrect participant number: %s.", arguments)
 					return
 				}
-				removed := b.eventService.RemoveParticipantByNumber(ctx, update.FromChat().ID, participantNumber)
-				msg.Text = fmt.Sprintf("Person %s won't attend.", removed.Name)
+				removed, err := b.eventService.RemoveParticipantByNumber(ctx, update.FromChat().ID, participantNumber)
+				if err != nil {
+					log.Error().Msgf("Failed to remove %d: %s.", participantNumber, err)
+					msg.Text = fmt.Sprintf("Failed to remove %d.", participantNumber)
+				} else {
+					msg.Text = fmt.Sprintf("%s won't attend.", removed.Name)
+				}
 			} else {
-				b.eventService.RemoveParticipant(ctx, update.FromChat().ID, self)
-				msg.Text = fmt.Sprintf("Person %s won't attend.", self.Name)
+				_, err := b.eventService.RemoveParticipant(ctx, update.FromChat().ID, self)
+				if err != nil {
+					log.Error().Msgf("Failed to remove %s: %s.", self.Name, err)
+					msg.Text = fmt.Sprintf("Failed to remove %s.", self.Name)
+				} else {
+					msg.Text = fmt.Sprintf("%s won't attend.", self.Name)
+				}
 			}
 		default:
 			msg.Text = fmt.Sprintf("Unknown command: %s.", update.Message.Command())
@@ -150,17 +193,18 @@ func (b *TgBot) ProcessUpdates() {
 	}
 }
 
-func (b *TgBot) hasPermissionToCreateEvent(userId int64, chatId int64) bool {
+func (b *TgBot) hasPermissionToCreateEvent(userId int64, chatId int64) (bool, error) {
 	resp, err := b.bot.GetChatAdministrators(tgbotapi.ChatAdministratorsConfig{ChatConfig: tgbotapi.ChatConfig{ChatID: chatId}})
 	if err != nil {
-		log.Error().Err(err)
+		log.Error().Msgf("Failed to get chat administrators: %s.", err)
+		return false, err
 	}
 	for _, member := range resp {
 		if userId == member.User.ID && (member.IsCreator() || member.IsAdministrator()) {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 func getSelf(update tgbotapi.Update) *model.Participant {
@@ -187,7 +231,7 @@ func (b *TgBot) renderEvent(event model.Event) string {
 	var doc bytes.Buffer
 	err := b.eventRenderingTemplate.ExecuteTemplate(&doc, "event", event)
 	if err != nil {
-		log.Error().Msgf("Failed rendering the event %s.", event.Id())
+		log.Error().Msgf("Failed to render the event %s.", event.Id())
 	}
 	return doc.String()
 }
@@ -195,10 +239,11 @@ func (b *TgBot) renderEvent(event model.Event) string {
 //go:embed event.gohtml
 var templateStr string
 
-func getTemplate() template.Template {
-	t, err := template.New("event").Funcs(sprig.FuncMap()).Parse(templateStr)
+func getTemplate() (*templating.Template, error) {
+	t, err := templating.New("event").Funcs(sprig.FuncMap()).Parse(templateStr)
 	if err != nil {
-		log.Fatal().Msgf("Failed getting the template: %s.", err)
+		log.Error().Msgf("Failed to get the template: %s.", err)
+		return nil, err
 	}
-	return *t
+	return t, nil
 }

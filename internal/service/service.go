@@ -4,7 +4,6 @@ import (
 	"context"
 	"event-gorganizer/internal/model"
 	"event-gorganizer/internal/repository"
-	"github.com/rs/zerolog/log"
 	"time"
 )
 
@@ -18,12 +17,18 @@ func NewService(repo *repository.EventRepository) *EventService {
 	}
 }
 
-func (s *EventService) CreateNewEvent(ctx context.Context, chatId int64, creator *model.Participant, title string) *model.Event {
-	r, err := repository.ExecTx(ctx, s.repo, false,
+func (s *EventService) CreateNewEvent(ctx context.Context, chatId int64, creator *model.Participant, title string) (*model.Event, error) {
+	tx, err := repository.ExecTx(ctx, s.repo, false,
 		func() (*model.Event, error) {
-			prevEvent := s.repo.GetActiveEvent(ctx, chatId)
+			prevEvent, err := s.repo.GetActiveEvent(ctx, chatId)
+			if err != nil {
+				return nil, err
+			}
 			prevEvent.Active = false
-			s.repo.Save(ctx, prevEvent)
+			_, err = s.repo.Save(ctx, prevEvent)
+			if err != nil {
+				return nil, err
+			}
 			newEvent := &model.Event{
 				ChatId:       chatId,
 				Creator:      creator,
@@ -32,69 +37,76 @@ func (s *EventService) CreateNewEvent(ctx context.Context, chatId int64, creator
 				Participants: make([]*model.Participant, 0),
 				Active:       true,
 			}
-			s.repo.Save(ctx, newEvent)
+			newEvent, err = s.repo.Save(ctx, newEvent)
+			if err != nil {
+				return nil, err
+			}
 			return newEvent, nil
 		})
-	if err != nil {
-		log.Error().Err(err)
-	}
-	return r
+	return tx, err
 }
 
-func (s *EventService) GetActiveEvent(ctx context.Context, chatId int64) *model.Event {
-	res, err := repository.ExecTx(ctx, s.repo, true,
+func (s *EventService) GetActiveEvent(ctx context.Context, chatId int64) (*model.Event, error) {
+	tx, err := repository.ExecTx(ctx, s.repo, true,
 		func() (*model.Event, error) {
-			return s.repo.GetActiveEvent(ctx, chatId), nil
-		})
-	if err != nil {
-		log.Error().Err(err)
-	}
-	return res
-}
-
-func (s *EventService) AddNewParticipant(ctx context.Context, chatId int64, participant *model.Participant) *model.Event {
-	res, err := repository.ExecTx(ctx, s.repo, false,
-		func() (*model.Event, error) {
-			event := s.GetActiveEvent(ctx, chatId)
-			if event.AddParticipant(participant) != nil {
-				s.repo.Save(ctx, event)
+			event, err := s.repo.GetActiveEvent(ctx, chatId)
+			if err != nil {
+				return nil, err
 			}
 			return event, nil
 		})
-	if err != nil {
-		log.Error().Err(err)
-	}
-	return res
+	return tx, err
 }
 
-func (s *EventService) RemoveParticipant(ctx context.Context, chatId int64, participant *model.Participant) *model.Participant {
-	res, err := repository.ExecTx(ctx, s.repo, false,
+func (s *EventService) AddNewParticipant(ctx context.Context, chatId int64, participant *model.Participant) (*model.Participant, error) {
+	return repository.ExecTx(ctx, s.repo, false,
 		func() (*model.Participant, error) {
-			event := s.GetActiveEvent(ctx, chatId)
+			event, err := s.GetActiveEvent(ctx, chatId)
+			if err != nil {
+				return nil, err
+			}
+			if event.AddParticipant(participant) {
+				_, err = s.repo.Save(ctx, event)
+				if err != nil {
+					return nil, err
+				}
+			}
+			return participant, nil
+		})
+}
+
+func (s *EventService) RemoveParticipant(ctx context.Context, chatId int64, participant *model.Participant) (*model.Participant, error) {
+	return repository.ExecTx(ctx, s.repo, false,
+		func() (*model.Participant, error) {
+			event, err := s.GetActiveEvent(ctx, chatId)
+			if err != nil {
+				return nil, err
+			}
 			removed := event.RemoveParticipant(participant.Id())
 			if removed != nil {
-				s.repo.Save(ctx, event)
+				event, err = s.repo.Save(ctx, event)
+				if err != nil {
+					return nil, err
+				}
 			}
 			return removed, nil
 		})
-	if err != nil {
-		log.Error().Err(err)
-	}
-	return res
 }
 
-func (s *EventService) RemoveParticipantByNumber(ctx context.Context, chatId int64, idx int) *model.Participant {
-	res, err := repository.ExecTx(ctx, s.repo, false,
+func (s *EventService) RemoveParticipantByNumber(ctx context.Context, chatId int64, idx int) (*model.Participant, error) {
+	return repository.ExecTx(ctx, s.repo, false,
 		func() (*model.Participant, error) {
-			event := s.GetActiveEvent(ctx, chatId)
+			event, err := s.GetActiveEvent(ctx, chatId)
+			if err != nil {
+				return nil, err
+			}
 			removed := event.RemoveParticipantByNumber(idx)
 			if removed != nil {
-				s.repo.Save(ctx, event)
+				_, err := s.repo.Save(ctx, event)
+				if err != nil {
+					return nil, err
+				}
 			}
 			return removed, nil
 		})
-	if err != nil {
-		log.Error().Err(err)
-	}
-	return res
 }
