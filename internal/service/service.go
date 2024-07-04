@@ -110,3 +110,29 @@ func (s *EventService) RemoveParticipantByNumber(ctx context.Context, chatId int
 			return removed, nil
 		})
 }
+
+func (s *EventService) MarkPaid(ctx context.Context, chatId int64, participant *model.Participant) error {
+	return repository.ExecVoidTx(ctx, s.repo, false,
+		func() error {
+			event, err := s.GetActiveEvent(ctx, chatId)
+			if err != nil {
+				return err
+			}
+			event.MarkPaid(participant.Id())
+			event, err = s.repo.Save(ctx, event)
+			return nil
+		})
+}
+
+func (s *EventService) MarkPaidByNumber(ctx context.Context, chatId int64, idx int) error {
+	return repository.ExecVoidTx(ctx, s.repo, false,
+		func() error {
+			event, err := s.GetActiveEvent(ctx, chatId)
+			if err != nil {
+				return err
+			}
+			event.MarkPaidByNumber(idx)
+			event, err = s.repo.Save(ctx, event)
+			return nil
+		})
+}

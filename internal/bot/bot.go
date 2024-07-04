@@ -134,7 +134,7 @@ func (b *TgBot) ProcessUpdates() {
 				msg.Text = "Failed to get an active event."
 			} else {
 				msg.ParseMode = tgbotapi.ModeHTML
-				msg.Text = b.renderEvent(*event)
+				msg.Text = b.renderEvent(NewEventView(event))
 			}
 		case "i":
 			self := getSelf(update)
@@ -185,6 +185,30 @@ func (b *TgBot) ProcessUpdates() {
 					msg.Text = fmt.Sprintf("%s won't attend.", self.Name)
 				}
 			}
+		case "paid":
+			self := getSelf(update)
+			if hasArguments(update.Message) {
+				participantNumber, err := strconv.Atoi(arguments)
+				if err != nil {
+					msg.Text = fmt.Sprintf("Incorrect participant number: %s.", arguments)
+					return
+				}
+				err = b.eventService.MarkPaidByNumber(ctx, update.FromChat().ID, participantNumber)
+				if err != nil {
+					log.Error().Msgf("Failed to mark paid %d: %s.", participantNumber, err)
+					msg.Text = fmt.Sprintf("Failed to mark paid %d.", participantNumber)
+				} else {
+					msg.Text = fmt.Sprintf("%d paid.", participantNumber)
+				}
+			} else {
+				err := b.eventService.MarkPaid(ctx, update.FromChat().ID, self)
+				if err != nil {
+					log.Error().Msgf("Failed to mark paid %s: %s.", self.Name, err)
+					msg.Text = fmt.Sprintf("Failed to mark paid %s.", self.Name)
+				} else {
+					msg.Text = fmt.Sprintf("%s paid.", self.Name)
+				}
+			}
 		default:
 			msg.Text = fmt.Sprintf("Unknown command: %s.", update.Message.Command())
 		}
@@ -229,11 +253,11 @@ func hasArguments(message *tgbotapi.Message) bool {
 	return len(strings.TrimSpace(message.CommandArguments())) > 0
 }
 
-func (b *TgBot) renderEvent(event model.Event) string {
+func (b *TgBot) renderEvent(event Event) string {
 	var doc bytes.Buffer
 	err := b.eventRenderingTemplate.ExecuteTemplate(&doc, "event", event)
 	if err != nil {
-		log.Error().Msgf("Failed to render the event %s.", event.Id())
+		log.Error().Msgf("Failed to render the event %s.", event.Id)
 	}
 	return doc.String()
 }

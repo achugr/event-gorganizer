@@ -16,17 +16,22 @@ type Event struct {
 }
 
 type Participant struct {
-	Number     int
-	Name       string
-	TelegramId *int64
-	InvitedBy  *Participant
+	Number        int
+	Name          string
+	TelegramId    *int64
+	InvitedBy     *Participant
+	PaymentStatus PaymentStatus
 }
 
-func (t Participant) Id() string {
-	if t.TelegramId != nil {
-		return strconv.FormatInt(*t.TelegramId, 10)
+type PaymentStatus struct {
+	Paid bool
+}
+
+func (p Participant) Id() string {
+	if p.TelegramId != nil {
+		return strconv.FormatInt(*p.TelegramId, 10)
 	} else {
-		return t.Name
+		return p.Name
 	}
 }
 
@@ -73,6 +78,22 @@ func (e *Event) RemoveParticipantByNumber(number int) *Participant {
 		}
 	}
 	return nil
+}
+
+func (e *Event) MarkPaid(id string) {
+	for _, p := range e.Participants {
+		if p.Id() == id {
+			p.PaymentStatus = PaymentStatus{Paid: true}
+		}
+	}
+}
+
+func (e *Event) MarkPaidByNumber(number int) {
+	for _, p := range e.Participants {
+		if p.Number == number {
+			p.PaymentStatus = PaymentStatus{Paid: true}
+		}
+	}
 }
 
 func (e *Event) removeParticipantByIndex(idx int) *Participant {
