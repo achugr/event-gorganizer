@@ -232,6 +232,33 @@ func TestMarkPaid(t *testing.T) {
 	assert.Equal(t, PaymentStatus{Paid: true}, e.Participants[1].PaymentStatus)
 }
 
+func TestMarkPaidByNumber(t *testing.T) {
+	e := &Event{
+		Participants: []*Participant{
+			{
+				Number:     1,
+				Name:       "Alice",
+				TelegramId: getIntPointer(111),
+			},
+			{
+				Number:        2,
+				Name:          "Bob",
+				TelegramId:    getIntPointer(222),
+				PaymentStatus: PaymentStatus{Paid: false},
+			},
+			{
+				Number:        3,
+				Name:          "Charlie",
+				TelegramId:    getIntPointer(333),
+				PaymentStatus: PaymentStatus{Paid: false},
+			},
+		},
+	}
+
+	e.MarkPaidByNumber(e.Participants[1].Number)
+	assert.Equal(t, PaymentStatus{Paid: true}, e.Participants[1].PaymentStatus)
+}
+
 func getIntPointer(id int64) *int64 {
 	return &id
 }
