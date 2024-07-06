@@ -43,8 +43,8 @@ func TestEvent_AddSameParticipantTwice(t *testing.T) {
 		InvitedBy:  nil,
 	}
 	added := event.AddParticipant(newParticipant)
-
-	assert.Nil(t, event.AddParticipant(added), "Operation result incorrect")
+	assert.True(t, added, "Operation result incorrect")
+	assert.False(t, event.AddParticipant(newParticipant), "Operation result incorrect")
 	assert.ElementsMatch(t, event.Participants, []*Participant{newParticipant}, "Participant was added twice")
 }
 
@@ -85,13 +85,15 @@ func TestEvent_RemoveParticipant(t *testing.T) {
 		Active:       true,
 	}
 
-	p1 := event.AddParticipant(&Participant{
+	participant := &Participant{
 		Name:       "Player 1",
 		TelegramId: getIntPointer(1),
 		InvitedBy:  nil,
-	})
-	removedParticipant := event.RemoveParticipant(p1.Id())
-	assert.Equalf(t, p1, removedParticipant, "Operation result is not correct")
+	}
+	added := event.AddParticipant(participant)
+	assert.True(t, added, "Operation result incorrect")
+	removedParticipant := event.RemoveParticipant(participant.Id())
+	assert.Equal(t, participant, removedParticipant, "Operation result is not correct")
 	assert.Emptyf(t, event.Participants, "Participant was not removed")
 }
 
@@ -185,11 +187,12 @@ func TestEvent_FindParticipant(t *testing.T) {
 		InvitedBy:  nil,
 	})
 
-	p2 := event.AddParticipant(&Participant{
+	p2 := &Participant{
 		Name:       "Player 2",
 		TelegramId: getIntPointer(2),
 		InvitedBy:  nil,
-	})
+	}
+	event.AddParticipant(p2)
 
 	event.AddParticipant(&Participant{
 		Name:       "Player 3",
@@ -200,6 +203,33 @@ func TestEvent_FindParticipant(t *testing.T) {
 	foundParticipant := event.FindParticipant(strconv.Itoa(2))
 
 	assert.Equalf(t, p2, foundParticipant, "Operation result is not correct")
+}
+
+func TestMarkPaid(t *testing.T) {
+	e := &Event{
+		Participants: []*Participant{
+			{
+				Number:     1,
+				Name:       "Alice",
+				TelegramId: getIntPointer(111),
+			},
+			{
+				Number:        2,
+				Name:          "Bob",
+				TelegramId:    getIntPointer(222),
+				PaymentStatus: PaymentStatus{Paid: false},
+			},
+			{
+				Number:        3,
+				Name:          "Charlie",
+				TelegramId:    getIntPointer(333),
+				PaymentStatus: PaymentStatus{Paid: false},
+			},
+		},
+	}
+
+	e.MarkPaid(e.Participants[1].Id())
+	assert.Equal(t, PaymentStatus{Paid: true}, e.Participants[1].PaymentStatus)
 }
 
 func getIntPointer(id int64) *int64 {
