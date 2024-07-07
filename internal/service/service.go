@@ -93,6 +93,16 @@ func (s *EventService) RemoveParticipant(ctx context.Context, chatId int64, part
 		})
 }
 
+func (s *EventService) FindParticipantByNumber(ctx context.Context, chatId int64, number int) (*model.Participant, error) {
+	return repository.ExecTx(ctx, s.repo, true, func() (*model.Participant, error) {
+		event, err := s.GetActiveEvent(ctx, chatId)
+		if err != nil {
+			return nil, err
+		}
+		return event.FindParticipantByNumber(number), nil
+	})
+}
+
 func (s *EventService) RemoveParticipantByNumber(ctx context.Context, chatId int64, idx int) (*model.Participant, error) {
 	return repository.ExecTx(ctx, s.repo, false,
 		func() (*model.Participant, error) {

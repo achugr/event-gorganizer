@@ -108,18 +108,19 @@ func (b *TgBot) ProcessUpdates() {
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "")
 
 		arguments := update.Message.CommandArguments()
+		chatId := update.FromChat().ID
 		switch update.Message.Command() {
 		case "new":
-			chatId := update.FromChat().ID
-			hasPermission, err := b.hasPermissionToCreateEvent(update.SentFrom().ID, update.FromChat().ID)
+			chatId := chatId
+			hasPermission, err := b.hasPermissionToCreateEvent(update.SentFrom().ID, chatId)
 			if err != nil {
-				log.Error().Msgf("Failed to check permissions for the chat %s: %s.", chatId, err)
+				log.Error().Msgf("Failed to check permissions for the chat %d: %s.", chatId, err)
 				msg.Text = "Failed to check permissions."
 			} else if hasPermission {
 				creator := getSelf(update)
 				_, err := b.eventService.CreateNewEvent(ctx, chatId, creator, arguments)
 				if err != nil {
-					log.Error().Msgf("Failed to create an event for the chat %s: %s.", chatId, err)
+					log.Error().Msgf("Failed to create an event for the chat %d: %s.", chatId, err)
 					msg.Text = "Failed to create an event."
 				} else {
 					msg.Text = "Event created."
@@ -128,9 +129,9 @@ func (b *TgBot) ProcessUpdates() {
 				msg.Text = "Event wasn't created, not enough rights."
 			}
 		case "event":
-			event, err := b.eventService.GetActiveEvent(ctx, update.FromChat().ID)
+			event, err := b.eventService.GetActiveEvent(ctx, chatId)
 			if err != nil {
-				log.Error().Msgf("Failed to get an active event for the chat %s: %s.", update.FromChat().ID, err)
+				log.Error().Msgf("Failed to get an active event for the chat %d: %s.", chatId, err)
 				msg.Text = "Failed to get an active event."
 			} else {
 				msg.ParseMode = tgbotapi.ModeHTML
@@ -145,7 +146,7 @@ func (b *TgBot) ProcessUpdates() {
 					TelegramId: nil,
 					InvitedBy:  self,
 				}
-				invitedParticipant, err := b.eventService.AddNewParticipant(ctx, update.FromChat().ID, invitedParticipant)
+				invitedParticipant, err := b.eventService.AddNewParticipant(ctx, chatId, invitedParticipant)
 				if err != nil {
 					log.Error().Msgf("Failed to add %s: %s.", invitedPerson, err)
 					msg.Text = fmt.Sprintf("Failed to add %s.", invitedPerson)
@@ -153,7 +154,7 @@ func (b *TgBot) ProcessUpdates() {
 					msg.Text = fmt.Sprintf("%s added by %s.", invitedPerson, self.Name)
 				}
 			} else {
-				_, err := b.eventService.AddNewParticipant(ctx, update.FromChat().ID, self)
+				_, err := b.eventService.AddNewParticipant(ctx, chatId, self)
 				if err != nil {
 					log.Error().Msgf("Failed to add %s: %s.", self.Name, err)
 					msg.Text = fmt.Sprintf("Failed to add %s.", self.Name)
@@ -167,9 +168,9 @@ func (b *TgBot) ProcessUpdates() {
 				participantNumber, err := strconv.Atoi(arguments)
 				if err != nil {
 					msg.Text = fmt.Sprintf("Incorrect participant number: %s.", arguments)
-					return
+					break
 				}
-				removed, err := b.eventService.RemoveParticipantByNumber(ctx, update.FromChat().ID, participantNumber)
+				removed, err := b.eventService.RemoveParticipantByNumber(ctx, chatId, participantNumber)
 				if err != nil {
 					log.Error().Msgf("Failed to remove %d: %s.", participantNumber, err)
 					msg.Text = fmt.Sprintf("Failed to remove %d.", participantNumber)
@@ -177,7 +178,7 @@ func (b *TgBot) ProcessUpdates() {
 					msg.Text = fmt.Sprintf("%s won't attend.", removed.Name)
 				}
 			} else {
-				_, err := b.eventService.RemoveParticipant(ctx, update.FromChat().ID, self)
+				_, err := b.eventService.RemoveParticipant(ctx, chatId, self)
 				if err != nil {
 					log.Error().Msgf("Failed to remove %s: %s.", self.Name, err)
 					msg.Text = fmt.Sprintf("Failed to remove %s.", self.Name)
@@ -191,17 +192,36 @@ func (b *TgBot) ProcessUpdates() {
 				participantNumber, err := strconv.Atoi(arguments)
 				if err != nil {
 					msg.Text = fmt.Sprintf("Incorrect participant number: %s.", arguments)
-					return
+					break
 				}
-				err = b.eventService.MarkPaidByNumber(ctx, update.FromChat().ID, participantNumber)
+				participant, err := b.eventService.FindParticipantByNumber(ctx, chatId, participantNumber)
+				if err != nil {
+					msg.Text = "Failed to mark as paid."
+					break
+				}
+				if participant == nil {
+					msg.Text = fmt.Sprintf("A participant with number %d not found.", participantNumber)
+					break
+				}
+				hasPermission, err := b.hasPermissionToMarkPaid(*self.TelegramId, chatId, *participant)
+				if err != nil {
+					log.Error().Msgf("Failed to check permissions for the chat %d: %s.", chatId, err)
+					msg.Text = "Failed to check permissions."
+					break
+				}
+				if !hasPermission {
+					msg.Text = "Not enough rights to mark as paid. "
+					break
+				}
+				err = b.eventService.MarkPaidByNumber(ctx, chatId, participantNumber)
 				if err != nil {
 					log.Error().Msgf("Failed to mark paid %d: %s.", participantNumber, err)
 					msg.Text = fmt.Sprintf("Failed to mark paid %d.", participantNumber)
 				} else {
-					msg.Text = fmt.Sprintf("%d paid.", participantNumber)
+					msg.Text = fmt.Sprintf("%s paid.", participant.Name)
 				}
 			} else {
-				err := b.eventService.MarkPaid(ctx, update.FromChat().ID, self)
+				err := b.eventService.MarkPaid(ctx, chatId, self)
 				if err != nil {
 					log.Error().Msgf("Failed to mark paid %s: %s.", self.Name, err)
 					msg.Text = fmt.Sprintf("Failed to mark paid %s.", self.Name)
@@ -231,6 +251,26 @@ func (b *TgBot) hasPermissionToCreateEvent(userId int64, chatId int64) (bool, er
 		}
 	}
 	return false, nil
+}
+
+func (b *TgBot) hasPermissionToMarkPaid(userId int64, chatId int64, participant model.Participant) (bool, error) {
+	if userId == *participant.TelegramId {
+		return true, nil
+	} else if participant.InvitedBy != nil && userId == *participant.InvitedBy.TelegramId {
+		return true, nil
+	} else {
+		resp, err := b.bot.GetChatAdministrators(tgbotapi.ChatAdministratorsConfig{ChatConfig: tgbotapi.ChatConfig{ChatID: chatId}})
+		if err != nil {
+			log.Error().Msgf("Failed to get chat administrators: %s.", err)
+			return false, err
+		}
+		for _, member := range resp {
+			if userId == member.User.ID && (member.IsCreator() || member.IsAdministrator()) {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
 }
 
 func getSelf(update tgbotapi.Update) *model.Participant {

@@ -48,6 +48,15 @@ func (e *Event) FindParticipant(id string) *Participant {
 	return nil
 }
 
+func (e *Event) FindParticipantByNumber(number int) *Participant {
+	for _, p := range e.Participants {
+		if p.Number == number {
+			return p
+		}
+	}
+	return nil
+}
+
 func (e *Event) AddParticipant(participant *Participant) bool {
 	existing := e.FindParticipant(participant.Id())
 	if existing == nil {
