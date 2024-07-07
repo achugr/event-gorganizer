@@ -6,6 +6,7 @@
     {{- if .Participants -}}
         {{- range $participant := .Participants -}}
             {{- $participant.Title}}
+            {{- "\n" -}}
         {{- end -}}
     {{- else -}}
         {{- "No participants" -}}
