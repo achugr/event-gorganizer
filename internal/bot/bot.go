@@ -254,9 +254,9 @@ func (b *TgBot) hasPermissionToCreateEvent(userId int64, chatId int64) (bool, er
 }
 
 func (b *TgBot) hasPermissionToMarkPaid(userId int64, chatId int64, participant model.Participant) (bool, error) {
-	if userId == *participant.TelegramId {
+	if participant.TelegramId != nil && *participant.TelegramId == userId {
 		return true, nil
-	} else if participant.InvitedBy != nil && userId == *participant.InvitedBy.TelegramId {
+	} else if participant.InvitedBy != nil && *participant.InvitedBy.TelegramId == userId {
 		return true, nil
 	} else {
 		resp, err := b.bot.GetChatAdministrators(tgbotapi.ChatAdministratorsConfig{ChatConfig: tgbotapi.ChatConfig{ChatID: chatId}})
