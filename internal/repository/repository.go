@@ -80,3 +80,21 @@ func ExecTx[R any](ctx context.Context, repo *EventRepository, readonly bool, f 
 	}, opts...)
 	return r, err
 }
+
+func ExecVoidTx(ctx context.Context, repo *EventRepository, readonly bool, f func() error) error {
+	var opts []datastore.TransactionOption
+	if readonly {
+		opts = []datastore.TransactionOption{datastore.ReadOnly}
+	}
+	_, err := repo.dsClient.RunInTransaction(ctx, func(tx *datastore.Transaction) error {
+		e := f()
+		if e != nil {
+			log.Error().Err(e)
+			if rbErr := tx.Rollback(); rbErr != nil {
+				return fmt.Errorf("tx err: %v, rb err: %v", e, rbErr)
+			}
+		}
+		return nil
+	}, opts...)
+	return err
+}

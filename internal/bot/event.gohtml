@@ -5,11 +5,8 @@
     {{"\n"}}
     {{- if .Participants -}}
         {{- range $participant := .Participants -}}
-            {{- if $participant.InvitedBy -}}
-                {{- printf "#%d: %s (invited by @%s)\n" $participant.Number $participant.Name $participant.InvitedBy.Name -}}
-            {{- else -}}
-                {{- printf "#%d: %s\n" $participant.Number $participant.Name -}}
-            {{- end -}}
+            {{- $participant.Title}}
+            {{- "\n" -}}
         {{- end -}}
     {{- else -}}
         {{- "No participants" -}}
