@@ -60,19 +60,6 @@ func NewWebhookBot(eventService *service.EventService, webhookSecret string, tgK
 		return nil, err
 	}
 
-	bot.Debug = true
-
-	info, err := bot.GetWebhookInfo()
-	if err != nil {
-		log.Error().Msg(err.Error())
-		return nil, err
-	}
-
-	if info.LastErrorDate != 0 {
-		log.Error().Msgf("Telegram callback failed: %s.", info.LastErrorMessage)
-		return nil, err
-	}
-
 	updates := bot.ListenForWebhook("/" + webhookSecret)
 	go func() {
 		err := http.ListenAndServe(":8080", nil)
